@@ -1,0 +1,134 @@
+{% extends 'base.html' %} 
+{% block head %}
+{% load static %}
+<title>Chamber Cam</title>
+<style>
+.stillWatching{
+  visibility: hidden;
+}
+.videoStream{
+  margin-top: 25px;
+  margin-bottom: 50px;
+}
+
+</style>
+{% endblock %} 
+{% block body %}
+<img hidden class="stillWatching" id = 'SW' src="{% static 'images/stillWatching.png' %}" alt="">
+
+<p hidden id="serial">{{ deviceSerial }}</p>
+<p hidden id="token">{{ token }}</p>
+<div class  = "page-header-A">
+  <div class = "page-header-A-item">
+    <a class="btn btn-primary btn" href="{% url 'equipmentdashboard'%}" role="button">Home</a>
+  </div>
+  <div class = "page-header-A-item-title">
+    <h3 class = "page-header-A-item-title-font">Live Video for {{deviceName}}</h3>
+  </div>
+  <div class = "page-header-A-item" >
+    <!-- <a class="btn btn-success btn"  role="button" onClick="window.location.reload();" >Refresh</a> -->
+  </div>
+</div>
+
+<div class = "videoStream">
+  <p id = "streamLoadingText">Stream loading. If stream does not appear in 10 seconds, please leave page for 5 seconds then return</p>
+  <img  class = "video-feed" id="live-video-feed" src="" onerror="this.style.display='none'"/>
+  <div class="spinner-border text-success spin" role="status" id = "loadingDiv"></div>
+</div>
+
+<script>
+  // get img dom element
+  const serial = document.getElementById("serial").innerHTML;
+  const token = document.getElementById("token").innerHTML;
+  let feed = document.getElementById("live-video-feed");
+  let stillWatching = document.getElementById("SW").src;
+  let loading_div = document.getElementById("loadingDiv");
+  let loadingText = document.getElementById("streamLoadingText");
+  console.log(window.location.protocol)
+  if (window.location.protocol == "https:"){
+    var ws_scheme = "wss:"
+  }else{
+    var ws_scheme = "ws:"
+  }
+  //autodetect which environment we are in for debugging, demos, etc
+var host = window.location.hostname
+if (host == "127.0.0.1"){
+  host = window.location.hostname + ":8000";
+};
+
+  const WS_URL = ws_scheme + "//" + host + `/stream/${serial}/?${token}`;
+  let ws;
+  feed.style.display = "none";
+  
+  function setupWebsocket() {
+    ws = new WebSocket(WS_URL);
+    let timeout = 0
+    var loop = 0;
+    var rebootCount = 0;
+    var srcData;
+    var lastSrcData;
+    ws.onopen = () => console.log(`Connected! to ${WS_URL}`);
+    ws.onmessage = (message) => {
+        try {
+        if (message.data === 'ping') {
+            ws.send('pong');
+            console.log('pong');
+            return;
+        }
+        } catch {}
+        try{
+        if (message.data != 'ping' && loop == 0) {
+          loading_div.remove();
+          loadingText.remove();
+          feed.style.display = "inline";
+          loop = 1;
+        }
+        }catch {}
+        feed.src = URL.createObjectURL(message.data);
+        //var binaryData = [];
+	//binaryData.push(message.data);
+	//feed.src = window.URL.createObjectURL(new Blob(binaryData, {type: "application/zip"}))
+	srcData = feed.src;
+      
+
+
+        //feed.style.display = "inline";
+
+	//vid.srcObject = message.data;
+    };
+    ws.onclose = () => {
+      if (timeout == 1){
+        //Closed automatically by timeout
+        console.log('closed');
+        feed.src = stillWatching;
+      }else{
+        //closed for some other reason, so keep trying to connect
+        console.log('closed, reconnecting...')
+        setupWebsocket()
+      }
+    }
+    ws.onerror = (e) => {
+      console.log('error');
+      console.log(e);
+    };
+
+    setTimeout(kill, 6000000);
+    function kill() {
+        //document.getElementById('videoDiv').innerHTML = "Video Timeout";
+        ws.close();
+        timeout = 1;
+    }
+    function rebootSocket() {
+        //close socket, wait 5 seconds, start again
+        console.log("closing to reboot")
+        ws.close();
+        setTimeout(setupWebsocket, 5000);
+    }
+  }
+
+  setupWebsocket();
+  //run kill function after 1 minute so that stream doesn't go on forever
+
+</script>
+{% endblock %}
+
